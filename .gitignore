@@ -1,0 +1,12 @@
+*.aux
+*.log
+
+*_files/
+*_cache/
+/beamerthemeMonash.sty
+
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store

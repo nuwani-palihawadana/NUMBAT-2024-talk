@@ -1,0 +1,32 @@
+\usetheme{Monash}
+
+$if(toc)$
+% Outline at start of each section
+\AtBeginSection[]{
+   \begin{frame}{Outline}\vspace*{0.7cm}
+   \tableofcontents[currentsection,hideallsubsections]
+   \end{frame}
+  }
+$endif$
+
+% Monash title page
+% Modified by moving title and adding supervisors
+\setbeamerfont{title}{series=\bfseries,parent=structure,size=\fontsize{20}{28}}
+\setbeamertemplate{title page}
+{\placefig{-0.01}{-0.01}{width=1.01\paperwidth,height=1.01\paperheight}{$titlegraphic$}
+\begin{textblock}{10.2}(1,1)\usebeamerfont{title}
+{\color{$titlecolor$}\raggedright\par\inserttitle}
+\end{textblock}
+\begin{textblock}{10.8}(1,5.3)
+{\color{$titlecolor$}\raggedright{\insertauthor}\mbox{}\\[0.2cm]}
+\end{textblock}
+\begin{textblock}{10.8}(1,6.4)
+{\color{$titlecolor$}\raggedright{\textbf{Supervisors:}}\mbox{}\\[0.2cm]}
+\end{textblock}
+\begin{textblock}{8}(1,7)
+{\color{$titlecolor$}\raggedright{Prof. Rob J Hyndman, Dr Xiaoqian Wang \& Prof. Louise M Ryan}\mbox{}\\[0.2cm]}
+\end{textblock}}
+
+
+% Find images
+\graphicspath{{_extensions/presentation/_images/background/}{_extensions/quarto-monash/presentation/_images/background/}{figs/}{figures/}{images/}{img/}}

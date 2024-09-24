@@ -1,0 +1,992 @@
+---
+title: "Optimal Predictor Selection for High-dimensional Nonparametric Forecasting"
+author: Nuwani Palihawadana
+titlegraphic: bg-13.png
+titlecolor: white
+toc: false
+format:
+  presentation-beamer:
+    pdf-engine: xelatex
+    template-partials:
+        - before-title.tex
+execute:
+  cache: true
+  echo: true
+  warning: false
+  message: false
+---
+
+```{r}
+#| label: load-packages
+#| echo: false
+library(knitr)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tsibble)
+library(lubridate)
+library(cowplot)
+library(patchwork)
+library(kableExtra)
+library(feasts)
+```
+
+
+# Motivation
+
+## Heat Exposure Related Daily Mortality
+```{r}
+#| label: heat-summer-plot
+#| echo: false
+#| message: false
+
+dataSummer <- readRDS(here::here("data/Heat_Corrected.rds"))
+dataSummer |>
+  as_tsibble(index = Date) |>
+  mutate(Day = row_number()) |>
+  update_tsibble(index = Day, regular = TRUE) |>
+  autoplot(Death_lag_000, colour = "#D55E00") +
+  scale_x_continuous(
+    breaks = seq(1, 2300, by = 92),
+    labels = unique(dataSummer$Year)
+  ) +
+  labs(x = "Date", y = "Number of Deaths", title = "Daily Deaths in Summer - Montreal, Canada") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 12, size = 7))
+```
+
+
+## Heat Exposure Related Daily Mortality
+```{r}
+#| label: temp-heat-plot
+#| echo: false
+#| message: false
+
+p1 <- dataSummer |>
+  ggplot(aes(x = Tmax_lag_000, y = Death_lag_000)) +
+  geom_point(colour = "#CC79A7", alpha = 0.3) +
+  xlim(c(0, 35)) +
+  labs(
+    x = "Maximum Temperature (Degrees Celsius)",
+    y = "Number of Deaths",
+    title = "Deaths (Summer) against Max Temperature"
+  ) +
+  theme_bw() +
+  geom_smooth(colour = "black", se = FALSE, size = 0.4)
+
+p2 <- dataSummer |>
+  ggplot(aes(x = Tmin_lag_000, y = Death_lag_000)) +
+  geom_point(colour = "#CC79A7", , alpha = 0.3) +
+  xlim(c(0, 35)) +
+  labs(
+    x = "Minimum Temperature (Degrees Celsius)",
+    y = "Number of Deaths",
+    title = "Deaths (Summer) against Min Temperature"
+  ) +
+  theme_bw() +
+  geom_smooth(colour = "black", se = FALSE, size = 0.4)
+
+plot_grid(p1, p2, nrow=1)
+```
+
+# Background
+
+## Background
+
+\begin{itemize}
+  \item \color{violet} \textbf{\textsl{Nonlinear "Transfer Function" model}}
+\end{itemize}
+\begin{block}{}
+  \centerline{$y_{t} = f(\mathbfit{x}_{t}, \mathbfit{x}_{t-1}, \dots,\mathbfit{x}_{t-k}, y_{1},\dots,y_{t-l}) + \varepsilon_{t}$}
+\end{block}
+
+$y_{t}$ -- variable to forecast \newline
+$\mathbfit{x}_{t}$ -- a vector of predictors \newline
+$\varepsilon_{t}$ -- random error
+
+\pause
+\begin{itemize}
+  \item Impossible to estimate $f$ for large $k$ -- \textbf{\textit{curse of dimensionality}}
+  \pause
+  \item Reasonable to impose additivity constraints \\[0.2cm]
+\end{itemize}
+\begin{block}{}
+  \centerline{$f(\mathbfit{x}_{t}, \mathbfit{x}_{t-1}, \dots,\mathbfit{x}_{t-k}) = \sum_{a = 0}^{k} {f_{a}(\mathbfit{x}_{t-a})}$ \pause \color{violet} \alert{$\mathbfit{\leftarrow}$ Nonparametric Additive Model}}
+\end{block}
+
+
+## Background
+
+::: {.callout-warning}
+## \color{violet} \textbf{Issues:}
+
+\begin{enumerate}
+  \item Challenging to estimate in a high-dimensional setting \newline
+  \item Subjectivity in predictor selection, and predictor grouping to model interactions
+\end{enumerate}
+:::
+
+
+## Background
+
+::: {.callout-warning}
+## \color{violet} \textbf{Issues:}
+
+\begin{enumerate}
+  \item Challenging to estimate in a high-dimensional setting \newline
+  \item Subjectivity in predictor selection, and predictor grouping to model interactions
+\end{enumerate}
+:::
+
+::: {.callout-note}
+## \color{violet} \textbf{Index Models:}
+
+\begin{itemize}
+    \item \textbf{Mitigate difficulty of estimating a nonparametric component for each predictor}
+    \item \textbf{Improve flexibility}
+\end{itemize}
+\begin{textblock}{6}(8.5, 7)
+\fontsize{12}{12}\sf
+\begin{block}{}
+\color{violet}
+$$
+  y_{i} = g \left ( \mathbfit{\alpha}^{T} \mathbfit{x}_{i} \right ) + \varepsilon_{i}
+$$
+\end{block}
+\end{textblock}
+:::
+
+
+# Sparse Multiple Index (SMI) Model
+
+## Sparse Multiple Index (SMI) Model
+
+\begin{block}{Semi-parametric model}
+$$y_{i} = \beta_{0} + \sum_{j = 1}^{p}g_{j}(\mathbfit{\alpha}_{j}^{T}\mathbfit{x}_{ij}) + \sum_{k = 1}^{d}f_{k}(w_{ik}) + \mathbfit{\theta}^{T}\mathbfit{u}_{i} + \varepsilon_{i}, \quad i = 1, \dots, n,$$
+\end{block}
+
+\begin{itemize}
+  \item \small \color{black} $y_{i}$ -- \color{violet} univariate response
+  \item \small \color{black} $\mathbfit{x}_{ij} \in \mathbb{R}^{\ell_{j}}$, $j = 1, \dots, p$ -- \color{violet} $p$ subsets of predictors entering indices
+  \item \small \color{black} $\mathbfit{\alpha}_{j}$ -- \color{violet} $\ell_{j}$-dimensional vectors of index coefficients
+  \item \small \color{black} $g_{j}, f_{k}$ -- \color{violet} smooth nonlinear functions
+  \item \small \color{black} Additional predictors :
+    \begin{itemize}
+      \item \small $w_{ik}$  --   \color{violet} nonlinear 
+      \item \small \color{black} $\mathbfit{u}_{i}$  --   \color{violet} linear
+    \end{itemize}
+\end{itemize}
+
+\only<2->{\begin{textblock}{5.5}(9, 6.3)
+\fontsize{11}{12}\sf
+\begin{alertblock}{}
+\small Allow elements equal to zero in $\mathbfit{\alpha}_{j}$ -- "Sparse"
+\end{alertblock}
+\end{textblock}}
+
+\only<3->{\begin{textblock}{5.5}(9, 6)
+\fontsize{11}{12}\sf
+\begin{alertblock}{}
+\scriptsize Both "p" and the predictor grouping among indices are unknown.
+\end{alertblock}
+\end{textblock} 
+
+\begin{textblock}{5.5}(9, 7)
+\fontsize{11}{12}\sf
+\begin{alertblock}{}
+\scriptsize Overlapping of predictors among indices is not allowed.
+\end{alertblock}
+\end{textblock}}
+
+
+## Optimisation Problem
+
+\small Let \color{violet}\textbf{$q$} \color{black}be the \color{violet}\textit{total number of predictors} \color{black}entering indices.
+
+\begin{block}{}
+\begin{align*}
+  & \min_{\beta_{0}, p, \mathbfit{\alpha}, \mathbfit{g}, \mathbfit{f}, \mathbfit{\theta}} \quad \sum_{i = 1}^{n}\Bigg [ y_{i} - \beta_{0} - \sum_{j = 1}^{p}g_{j}(\mathbfit{\alpha}_{j}^{T}\mathbfit{x}_{i}) - \sum_{k = 1}^{d}f_{k}(w_{ik}) - \mathbfit{\theta}^{T}\mathbfit{u}_{i}\Bigg]^{2} \\
+  & \hspace*{5cm} + \color{blue}\lambda_{0}\sum_{j = 1}^{p}\sum_{m = 1}^{q}\mathbb{1}(\alpha_{jm} \neq 0) \color{black}+ \color{magenta}\lambda_{2}\sum_{j = 1}^{p}\|\mathbfit{\alpha}_{j}\|_2^2 \nonumber \\
+  & \hspace*{1.5cm} \text{s.t.}\quad \sum_{j=1}^p \mathbb{1}(\alpha_{jm} \neq 0) \in \{0,1\} \quad \forall m \nonumber
+\end{align*}
+\end{block}
+\begin{itemize}
+  \item \color{blue}$\lambda_{0} > 0$ -- controls the number of selected predictors
+  \item \color{magenta}$\lambda_{2} \ge 0$ -- controls the strength of the additional shrinkage
+\end{itemize}
+
+
+## MIQP Formulation
+
+\begin{block}{}
+$$
+\begin{aligned}
+  \min_{\beta_{0}, p, \mathbfit{\alpha}, \mathbfit{g}, \mathbfit{f}, \mathbfit{\theta}, \mathbfit{z}} \quad & \sum_{i = 1}^{n}\Bigg [ y_{i} - \beta_{0} - \sum_{j = 1}^{p}{g_{j}(\mathbfit{\alpha}_{j}^{T}\mathbfit{x}_{i})} - \sum_{k = 1}^{d} {f_{k}(w_{ik})} - \mathbfit{\theta}^{T}\mathbfit{u}_{i}\Bigg ]^{2} \\
+  & \hspace*{4cm} + \color{blue}\lambda_{0}\sum_{j = 1}^{p}\sum_{m = 1}^{q}z_{jm} \color{black}+ \color{magenta}\lambda_{2}\sum_{j = 1}^{p}\sum_{m = 1}^{q} \alpha_{jm}^{2} \\
+  \text{s.t.} \quad & |\alpha_{jm}| \le Mz_{jm} \quad \forall j, \forall m, \\
+  & \sum_{j = 1}^{p}z_{jm} \le 1 \quad \forall m, \\
+  & z_{jm} \in \{0, 1\} \color{red} \quad \mathbfit{\leftarrow} \quad z_{jm} = \mathbb{1}(\alpha_{jm} \neq 0)
+\end{aligned}
+$$
+\end{block}
+\begin{itemize}
+  \item $M < \infty$: \small{If $\mathbfit{\alpha^{*}}$ is an optimal solution, then $\max \big ( \{|\alpha_{jm}^{*} |\}_{j\in[p],m\in[q]} \big) \le M$}
+\end{itemize}
+
+## Estimation Algorithm
+
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{blue} \textbf{Step 1 :} \color{black} Initialise index structure and index coefficients
+\end{block}
+\pause
+\begin{block}{}
+\fontsize{8}{8}\sf
+  \begin{itemize}
+    \item \color{violet} \textbf{PPR:} Projection Pursuit Regression Based Initialisation
+    \item \color{violet} \textbf{Additive:} Nonparametric Additive Model Based Initialisation
+    \item \color{violet} \textbf{Linear:} Linear Regression Based Initialisation
+    \item \color{violet} \textbf{Multiple:} Pick One From Multiple Initialisations
+  \end{itemize}
+\end{block}
+
+
+## Estimation Algorithm
+
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{blue} \textbf{Step 1 :} \color{black} Initialise index structure and index coefficients
+\end{block}
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{violet} \textbf{Step 2 :} \color{black} Estimate nonlinear functions
+\end{block}
+\pause
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{blue} \textbf{Step 3 :} \color{black} Update index coefficients
+\end{block}
+\pause
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{violet} \textbf{Step 4 :} \color{black} Iterate steps 2 and 3 -- until:
+\end{block}
+\pause
+\begin{block}{}
+\fontsize{8}{8}\sf
+\begin{itemize}
+  \item \color{violet} convergence
+  \item \color{violet} loss increases for 3 consecutive iterations \color{black} OR
+  \item \color{violet} max iterations
+\end{itemize}
+\end{block}
+
+
+## Estimation Algorithm
+
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{blue} \textbf{Step 1 :} \color{black} Initialise index structure and index coefficients
+\end{block}
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{violet} \textbf{Step 2 :} \color{black} Estimate nonlinear functions
+\end{block}
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{blue} \textbf{Step 3 :} \color{black} Update index coefficients
+\end{block}
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{violet} \textbf{Step 4 :} \color{black} Iterate steps 2 and 3 until stopping criteria are reached
+\end{block}
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{blue} \textbf{Step 5 :} \color{black} Add a new index with dropped predictors, and repeat step 4
+\end{block}
+\pause 
+\begin{block}{}
+\fontsize{9}{9}\sf
+\color{violet} \textbf{Step 6 :} \color{black} Increase p by 1 in each iteration of step 5 -- until:
+\end{block}
+\pause 
+\begin{block}{}
+\fontsize{8}{8}\sf
+\begin{itemize}
+  \item \color{violet} no.of indices reaches $q$
+  \item \color{violet} loss increases after the increment model \color{black} OR 
+  \item \color{violet} solution maintains same no.of indices as previous iteration, and abs(difference of index coefficients between two successive iterations) $<=$ tolerance
+\end{itemize}
+\end{block}
+
+
+## Forecasting Heat Exposure Related Daily Mortality
+
+\begin{textblock}{7}(0.7, 1)
+\fontsize{11}{12}\sf
+\begin{block}{Variables}
+  \begin{itemize}
+    \item \color{violet} \textbf{Response:} \color{black} \textbf{Daily deaths in Summer} -- 1990 to 2014 -- Montreal, Canada
+    \item \color{violet} \textbf{Index Variables:} 
+      \begin{itemize}
+        \item \color{black} Death lags
+        \item \color{black} Max temperature lags
+        \item \color{black} Min temperature lags
+        \item \color{black} Vapor pressure lags
+      \end{itemize}
+    \item \color{violet}\textbf{Nonlinear:} \color{black} DOS (day of the season), Year \newline
+  \end{itemize}
+\end{block}
+\end{textblock}
+
+\only<2->{\begin{textblock}{14.6}(0.7, 6.8)
+\fontsize{11}{12}\sf
+\begin{alertblock}{}
+$$
+  \textbf{Deaths} = \beta_{0} + \sum_{j = 1}^{p}{g_{j}(\mathbfit{X}\mathbfit{\alpha}_{j})} + f_{1}(\textbf{DOS}) + f_{2}(\textbf{Year})+ \mathbfit{\varepsilon},
+$$
+\end{alertblock}
+\end{textblock}}
+
+
+## Forecasting Heat Exposure Related Daily Mortality
+
+\begin{textblock}{7}(0.7, 1)
+\fontsize{11}{12}\sf
+\begin{block}{Variables}
+  \begin{itemize}
+    \item \color{violet} \textbf{Response:} \color{black} \textbf{Daily deaths in Summer} -- 1990 to 2014 -- Montreal, Canada
+    \item \color{violet} \textbf{Index Variables:} 
+      \begin{itemize}
+        \item \color{black} Death lags
+        \item \color{black} Max temperature lags
+        \item \color{black} Min temperature lags
+        \item \color{black} Vapor pressure lags
+      \end{itemize}
+    \item \color{violet}\textbf{Nonlinear:} \color{black} DOS (day of the season), Year \newline
+  \end{itemize}
+\end{block}
+\end{textblock}
+
+\begin{textblock}{7}(8.3, 1)
+\fontsize{11}{12}\sf
+\begin{block}{Data Split}
+  \begin{itemize}
+  \item \color{violet}\textbf{Training Set:} \color{black}1990 to 2012 \newline
+  \item \color{violet}\textbf{Validation Set:} \color{black}2013 \newline
+  \item \color{violet}\textbf{Test Set:} \color{black}2014 \newline \newline \newline \newline \newline \newline
+\end{itemize}
+\end{block}
+\end{textblock}
+
+\begin{textblock}{14.6}(0.7, 6.8)
+\fontsize{11}{12}\sf
+\begin{alertblock}{}
+$$
+  \textbf{Deaths} = \beta_{0} + \sum_{j = 1}^{p}{g_{j}(\mathbfit{X}\mathbfit{\alpha}_{j})} + f_{1}(\textbf{DOS}) + f_{2}(\textbf{Year})+ \mathbfit{\varepsilon},
+$$
+\end{alertblock}
+\end{textblock}
+
+
+## Results
+
+\fontsize{9}{12}\sf
+```{r}
+#| echo: false
+results_heat <- readr::read_csv(here::here("results/heat_results_correct.csv"))
+kable(results_heat,
+    format = "latex",
+    booktabs = TRUE,
+    digits = 3,
+    escape = FALSE,
+    linesep = "",
+    col.names = c("Model", "Predictors", "Indices", "MSE", "MAE", "MSE", "MAE")
+  ) |>
+  add_header_above(c("", "", "", "Test Set 1" = 2, "Test Set 2" = 2), align = "c") |>
+  kable_styling(latex_options = c("repeat_header")) |>
+  row_spec(0, align = "c") |>
+  column_spec(4, bold = if_else(results_heat$MSE1 == min(results_heat$MSE1), TRUE, FALSE)) |>
+  column_spec(5, bold = if_else(results_heat$MAE1 == min(results_heat$MAE1), TRUE, FALSE)) |>
+  column_spec(6, bold = if_else(results_heat$MSE2 == min(results_heat$MSE2), TRUE, FALSE)) |>
+  column_spec(7, bold = if_else(results_heat$MAE2 == min(results_heat$MAE2), TRUE, FALSE))
+```
+
+\begin{textblock}{14}(1, 6.2)
+\fontsize{10}{12}\sf
+  \alert{SMI Model (a, b) $\quad \mathbfit{\rightarrow \quad \lambda_{0} = a, \lambda_{2} = b}$}
+\end{textblock}
+
+\begin{textblock}{14}(1, 7.2)
+\fontsize{10}{12}\sf
+\begin{block}{}
+\begin{itemize}
+  \item \color{violet} \textbf{Test Set 1:} \color{black} Three months (June, July and August 2014)
+  \item \color{violet} \textbf{Test Set 2:} \color{black} One month (June 2014)
+\end{itemize}
+\end{block}
+\end{textblock}
+
+
+## Summary
+
+::: {.callout-note}
+## \color{violet} \textbf{Key features:}
+
+\begin{itemize}
+    \item Automatic selection of number of indices and predictor grouping
+    \item Automatic predictor selection
+    \item A wide spectrum: from single index models to additive models
+  \end{itemize}
+:::
+
+::: {.callout-warning}
+## \color{violet} Limitations:
+
+\begin{itemize}
+    \item \small Initialisation: we encourage trial-and-error
+    \item \small Computational cost: increases with number of predictors and indices
+  \end{itemize}
+:::
+
+\begin{textblock}{13.8}(1.1, 7.6)
+\fontsize{11}{12}\sf
+\begin{alertblock}{}
+\color{blue} \hspace*{1.5cm} \textbf{Paper :} \href{https://github.com/nuwani-palihawadana/smimodel_paper}{github.com/nuwani-palihawadana/smimodel\_paper}
+\end{alertblock}
+\end{textblock}
+
+
+## R Package - smimodel
+
+\placefig{11.7}{2}{width=4cm}{hex-large}
+
+\begin{textblock}{10.2}(1, 0.8)
+\fontsize{12}{14}\sf
+\begin{block}{}
+  \begin{itemize}
+    \item Open source implementation of \textbf{SMI Modelling Algorithm}
+    \begin{itemize}
+      \item \color{violet} \textbf{model\_smimodel()} \newline
+    \end{itemize}
+    \item Penalty parameter tuning with greedy search
+    \begin{itemize}
+      \item \color{violet} \textbf{greedy\_smimodel()} \newline
+    \end{itemize}
+    \item Functions to fit benchmark models
+    \begin{itemize}
+      \item \color{violet} \textbf{model\_backward()}
+      \item \color{violet} \textbf{model\_gaim()}
+      \item \color{violet} \textbf{model\_ppr() etc.}
+    \end{itemize}
+  \end{itemize}
+\end{block}
+\end{textblock}
+
+\begin{textblock}{10.2}(1, 7.7)
+\fontsize{11}{12}\sf
+\begin{alertblock}{}
+ \color{blue} \hspace*{0.8cm} \href{https://github.com/nuwani-palihawadana/smimodel}{github.com/nuwani-palihawadana/smimodel}
+\end{alertblock}
+\end{textblock}
+
+
+# Uncertainty Estimation
+
+## Uncertainty Estimation
+
+\begin{itemize}
+  \item \textbf{\color{violet}"Uncertainty"} of a forecast \alert{$\mathbfit{\rightarrow}$ Prediction Interval (PI)}
+  \pause
+  \item Theoretical $100(1 - \alpha)\%$ prediction interval:
+$$
+  \hat{y}_{t+h|t} \pm z_{\alpha/2}*\hat{\sigma}_{h},
+$$
+where
+  \begin{itemize}
+    \item \small \color{black} $y$ -- \color{violet} time series $y_{1}, \dots, y_{T}$
+    \item \small \color{black} $\hat{y}_{t+h|t}$ -- \color{violet} $h$ steps ahead point forecast for $y_{t+h}$
+    \item \small \color{black} $z_{\alpha/2}$ -- \color{violet} $\alpha/2$ quantile of standard normal distribution
+    \item \small \color{black} $\hat{\sigma}_{h}$ -- \color{violet} an estimate of std. deviation of $h$-step forecast distribution
+  \end{itemize}
+  \pause
+  \item Nonparametric Additive Models:
+  \begin{itemize}
+    \item \small \color{blue} No distributional assumptions
+    \item \small \color{blue} Serially correlated errors \alert{$\mathbfit{\rightarrow}$ Impossible to estimate theoretical PIs} 
+  \end{itemize}
+\end{itemize}
+
+
+## Methodology
+
+\begin{block}{Block Bootstrap}
+\begin{itemize}
+  \item Resampling from empirical distribution of historical model residuals \color{violet} $\mathbfit{\rightarrow}$ Bootstrapping \newline
+  \pause
+  \item \color{black} Randomly resample blocks from the historical model residuals, and join together \alert{$\mathbfit{\rightarrow}$ Block Bootstrapping} 
+  \item Retains serial correlation in the data 
+  \pause
+  \item \color{violet} block length:
+  \begin{itemize}
+    \item Long enough to capture autocorrelation patterns
+    \item Short enough to construct sufficient number of blocks
+  \end{itemize}
+\end{itemize}
+\end{block}
+
+
+## Methodology
+
+\begin{block}{\color{yellow} Conformal Prediction (CP) -- Vovk et al. (2005)}
+\begin{itemize}
+  \item A distribution-free approach
+  \item Relies only on the assumption of \textbf{exchangeability of data}
+  \item Provides theoretical coverage guarantees
+\end{itemize}
+\end{block}
+
+\pause
+
+\begin{block}{Split Conformal Prediction (SCP)}
+\begin{itemize}
+  \item A holdout method for generating prediction intervals
+  \begin{itemize}
+  \item \textbf{Training set} -- forecasting model is trained
+  \item \textbf{Calibration set} -- forecasting errors (\textit{nonconformity scores}) are calculated
+  \item \textbf{Test set} -- prediction intervals are obtained
+  \end{itemize}
+\end{itemize}
+\end{block}
+
+
+## Methodology
+
+\begin{itemize}
+  \item \color{violet}CP methods for \textbf{non-exchangeable data}:
+\end{itemize}
+\pause
+\begin{block}{Weighted Conformal Prediction (WCP) Methods}
+\begin{itemize}
+  \item \color{violet}Tibshirani et al. (2019):
+  \begin{itemize}
+    \item Depends on \textbf{"covariate shift"} assumption
+    \item \textit{Nonconformity scores} are weighted using ratio of likelihoods of training and test covariate distributions
+    \item Likelihood ratio is assumed to be known or accurately estimated
+  \end{itemize}
+  \pause
+  \item \color{violet}Barber et al. (2023):
+  \begin{itemize}
+    \item Weighting \textit{quantiles} to avoid assumption of exchangeability
+    \item Weights are "fixed" rather than being data dependent
+  \end{itemize}
+\end{itemize}
+\end{block}
+
+
+## Methodology
+
+\begin{itemize}
+  \item \color{violet}CP methods for \textbf{non-exchangeable data}:
+\end{itemize}
+\begin{block}{Adaptive Conformal Prediction (ACP) -- Gibbs \& Candès (2021)}
+\begin{itemize}
+  \item Update nominal $\mathbfit{\alpha}$ based on achieved coverage
+  \begin{itemize}
+    \item If achieved coverage is larger -- increase $\mathbfit{\alpha}$
+    \item If achieved coverage is smaller -- decrease $\mathbfit{\alpha}$ \newline
+  \end{itemize}
+\end{itemize}
+\end{block}
+
+
+## Methodology
+
+\begin{block}{}
+  \begin{itemize}
+    \item Prediction interval construction methods \newline
+    \begin{itemize}
+      \item Block Bootstrapping (BB) \newline
+      \item Conformal Prediction (CP) methods: SCP, WSCP, ACP \newline
+    \end{itemize}
+  \end{itemize}
+\end{block}
+
+\begin{block}{}
+  \begin{itemize}
+    \item Applied using \textit{\color{violet}online learning framework} proposed by \textit{\color{violet}Wang and Hyndman (2024)} \newline
+  \end{itemize}
+\end{block}
+
+
+## Forecasting Heat Exposure Related Daily Mortality
+
+\begin{textblock}{7}(0.7, 1.5)
+\fontsize{11}{12}\sf
+\begin{block}{Data Recap}
+  \begin{itemize}
+    \item \color{violet} \textbf{Response:} \color{black} \textbf{Daily deaths in Summer} -- 1990 to 2014 -- Montreal, Canada
+    \item \color{violet} \textbf{Index Variables:} 
+      \begin{itemize}
+        \item \color{black} Death lags
+        \item \color{black} Max temperature lags
+        \item \color{black} Min temperature lags
+        \item \color{black} Vapor pressure lags
+      \end{itemize}
+    \item \color{violet}\textbf{Nonlinear:} \color{black} DOS (day of the season), Year \newline
+  \end{itemize}
+\end{block}
+\end{textblock}
+
+\only<2->{\begin{textblock}{7}(8.3, 1.5)
+\fontsize{11}{12}\sf
+\begin{block}{\color{yellow} New Data Split}
+  \begin{itemize}
+  \item \color{violet}\textbf{Training Set:} \color{black}1990 to 2007 \newline
+  \item \color{violet}\textbf{Validation Set:} \color{black}2008 \newline
+  \item \color{violet}\textbf{Test Set:} \color{black}2009 to 2014 \newline \newline \newline \newline \newline \newline
+\end{itemize}
+\end{block}
+\end{textblock}}
+
+
+## Results
+
+\color{violet} \textbf{Block Bootstrap} $95\%$ Prediction Intervals (block length = 59):
+```{r}
+#| label: fig-int-bb
+#| echo: false
+#| message: false
+
+intervals <- readRDS(here::here("results/intervals_combine_new.rds"))
+cols_interval <- c(
+  "true" = "grey40",
+  "lower" = "#009E73",
+  "upper" = "#D55E00"
+)
+intervals |>
+  mutate(Horizon = if_else(Horizon == 1, "H = 1", if_else(Horizon == 46, "H = 46", "H = 92"))) |>
+  filter(Method == "BB") |>
+  ggplot(aes(x = Time, y = Value, group = Type, colour = Type)) +
+  labs(
+    y = "Number of Deaths"
+    ) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  facet_grid(factor(Model, levels = c("SMI - PPR", "Backward", "GAIM", "PPR")) ~ Horizon) +
+  scale_colour_manual(values = cols_interval) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        legend.box = "vertical",
+        legend.title = element_blank(),
+        axis.text.x = element_text(size = 7)) +
+  xlab("Time Index (t)") +
+  ylim(c(0, 150))
+```
+
+
+## Results
+
+\color{violet} \textbf{Split Conformal Prediction} $95\%$ Prediction Intervals:
+```{r}
+#| label: fig-int-scp
+#| echo: false
+#| message: false
+
+intervals |>
+  mutate(Horizon = if_else(Horizon == 1, "H = 1", if_else(Horizon == 46, "H = 46", "H = 92"))) |>
+  filter(Method == "SCP") |>
+  ggplot(aes(x = Time, y = Value, group = Type, colour = Type)) +
+  labs(
+    y = "Number of Deaths"
+    ) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  facet_grid(factor(Model, levels = c("SMI - PPR", "Backward", "GAIM", "PPR")) ~ Horizon) +
+  scale_colour_manual(values = cols_interval) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        legend.box = "vertical",
+        legend.title = element_blank(),
+        axis.text.x = element_text(size = 7)) +
+  xlab("Time Index (t)") +
+  ylim(c(0, 150))
+```
+
+
+## Results
+
+\color{violet} \textbf{Weighted Split Conformal Prediction} $95\%$ Prediction Intervals:
+```{r}
+#| label: fig-int-wscp
+#| echo: false
+#| message: false
+
+intervals |>
+  mutate(Horizon = if_else(Horizon == 1, "H = 1", if_else(Horizon == 46, "H = 46", "H = 92"))) |>
+  filter(Method == "WSCP") |>
+  ggplot(aes(x = Time, y = Value, group = Type, colour = Type)) +
+  labs(
+    y = "Number of Deaths"
+    ) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  facet_grid(factor(Model, levels = c("SMI - PPR", "Backward", "GAIM", "PPR")) ~ Horizon) +
+  scale_colour_manual(values = cols_interval) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        legend.box = "vertical",
+        legend.title = element_blank(),
+        axis.text.x = element_text(size = 7)) +
+  xlab("Time Index (t)") +
+  ylim(c(0, 150))
+```
+
+
+## Results
+
+\color{violet} \textbf{Adaptive Conformal Prediction} $95\%$ Prediction Intervals:
+```{r}
+#| label: fig-int-acp
+#| echo: false
+#| message: false
+
+intervals |>
+  mutate(Horizon = if_else(Horizon == 1, "H = 1", if_else(Horizon == 46, "H = 46", "H = 92"))) |>
+  filter(Method == "ACP") |>
+  ggplot(aes(x = Time, y = Value, group = Type, colour = Type)) +
+  labs(
+    y = "Number of Deaths"
+    ) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  facet_grid(factor(Model, levels = c("SMI - PPR", "Backward", "GAIM", "PPR")) ~ Horizon) +
+  scale_colour_manual(values = cols_interval) +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 12),
+        legend.box = "vertical",
+        legend.title = element_blank(),
+        axis.text.x = element_text(size = 7)) +
+  xlab("Time Index (t)") +
+  ylim(c(0, 150))
+```
+
+
+## Results
+
+\color{violet} \textbf{Mean Coverage:}
+```{r}
+#| label: fig-cov
+#| echo: false
+#| message: false
+
+avgCov_data_smimodel_ppr <- readRDS(here::here("results/SMIModel_PPR/plotData_combined_avgCov_heat_smimodel_ppr.rds"))
+avgCov_data_backward <- readRDS(here::here("results/Backward/plotData_combined_avgCov_heat_backward.rds"))
+avgCov_data_gaim <- readRDS(here::here("results/GAIM/plotData_combined_avgCov_heat_gaim.rds"))
+avgCov_data_ppr <- readRDS(here::here("results/PPR/plotData_combined_avgCov_heat_ppr.rds"))
+methods <- c("BB", "SCP", "WSCP", "ACP")
+cols <- c(
+  "BB" = "black",
+  "SCP" = "#0072B2",
+  "WSCP" = "#009E73",
+  "ACP" = "#D55E00"
+)
+
+p1 <- avgCov_data_smimodel_ppr |>
+  mutate(method = factor(method, levels = methods)) |>
+  ggplot(aes(x = horizon, y = coverage, group = method, colour = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  scale_colour_manual(values = cols) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", colour = "gray40") +
+  xlab("Forecast horizon") +
+  ylab("Mean coverage") +
+  ylim(c(0.80, 1.00)) +
+  ggtitle("SMI Model - PPR") +
+  theme_bw() +
+  theme(axis.title.x = element_blank()) +
+  scale_x_discrete(breaks = seq(1, 92, by = 5))
+
+p2 <- avgCov_data_backward |>
+  mutate(method = factor(method, levels = methods)) |>
+  ggplot(aes(x = horizon, y = coverage, group = method, colour = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  scale_colour_manual(values = cols) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", colour = "gray40") +
+  xlab("Forecast horizon") +
+  ylab("Mean coverage") +
+  ylim(c(0.80, 1.00)) +
+  ggtitle("Backward") +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  scale_x_discrete(breaks = seq(1, 92, by = 5))
+
+p3 <- avgCov_data_gaim |>
+  mutate(method = factor(method, levels = methods)) |>
+  ggplot(aes(x = horizon, y = coverage, group = method, colour = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  scale_colour_manual(values = cols) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", colour = "gray40") +
+  xlab("Forecast horizon") +
+  ylab("Mean coverage") +
+  ylim(c(0.80, 1.00)) +
+  ggtitle("GAIM") +
+  theme_bw() +
+  scale_x_discrete(breaks = seq(1, 92, by = 5))
+
+p4 <- avgCov_data_ppr |>
+  mutate(method = factor(method, levels = methods)) |>
+  ggplot(aes(x = horizon, y = coverage, group = method, colour = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  scale_colour_manual(values = cols) +
+  geom_hline(yintercept = 0.95, linetype = "dashed", colour = "gray40") +
+  xlab("Forecast horizon") +
+  ylab("Mean coverage") +
+  ylim(c(0.80, 1.00)) +
+  ggtitle("PPR") +
+  theme_bw() +
+  theme(axis.title.y = element_blank()) +
+  scale_x_discrete(breaks = seq(1, 92, by = 5))
+
+patchwork <- (p1 + p2) / (p3 + p4) & theme(legend.position = "bottom", 
+                                           #legend.box = "vertical",
+                                           legend.title = element_blank(),
+                                           axis.text.x = element_text(size = 7),
+                                           axis.title = element_text(size = 8),
+                                           title = element_text(size = 8))
+patchwork +
+  plot_layout(guides = "collect")
+```
+
+
+## Results
+
+\color{violet} \textbf{Mean Width:}
+```{r}
+#| label: fig-width
+#| echo: false
+#| message: false
+
+width_data_smimodel_ppr <- readRDS(here::here("results/SMIModel_PPR/plotData_combined_width_heat_smimodel_ppr.rds"))
+width_data_backward <- readRDS(here::here("results/Backward/plotData_combined_width_heat_backward.rds"))
+width_data_gaim <- readRDS(here::here("results/GAIM/plotData_combined_width_heat_gaim.rds"))
+width_data_ppr <- readRDS(here::here("results/PPR/plotData_combined_width_heat_ppr.rds"))
+
+p5 <- width_data_smimodel_ppr |>
+  mutate(method = factor(method, levels = methods)) |>
+  ggplot(aes(x = horizon, y = width, group = method, colour = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  scale_colour_manual(values = cols) +
+  xlab("Forecast horizon") +
+  ylab("Mean width") +
+  ylim(c(30, 80)) +
+  ggtitle("SMI Model - PPR") +
+  theme_bw() +
+  theme(axis.title.x = element_blank()) +
+  scale_x_discrete(breaks = seq(1, 92, by = 5))
+
+p6 <- width_data_backward |>
+  mutate(method = factor(method, levels = methods)) |>
+  ggplot(aes(x = horizon, y = width, group = method, colour = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  scale_colour_manual(values = cols) +
+  xlab("Forecast horizon") +
+  ylab("Mean width") +
+  ylim(c(30, 80)) +
+  ggtitle("Backward") +
+  theme_bw() +
+  theme(axis.title.x = element_blank(),
+        axis.title.y = element_blank()) +
+  scale_x_discrete(breaks = seq(1, 92, by = 5))
+
+p7 <- width_data_gaim |>
+  mutate(method = factor(method, levels = methods)) |>
+  ggplot(aes(x = horizon, y = width, group = method, colour = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  scale_colour_manual(values = cols) +
+  xlab("Forecast horizon") +
+  ylab("Mean width") +
+  ylim(c(30, 80)) +
+  ggtitle("GAIM") +
+  theme_bw() +
+  scale_x_discrete(breaks = seq(1, 92, by = 5))
+
+p8 <- width_data_ppr |>
+  mutate(method = factor(method, levels = methods)) |>
+  ggplot(aes(x = horizon, y = width, group = method, colour = method)) +
+  geom_line(linewidth = 0.6, alpha = 0.8) +
+  scale_colour_manual(values = cols) +
+  xlab("Forecast horizon") +
+  ylab("Mean width") +
+  ylim(c(30, 80)) +
+  ggtitle("PPR") +
+  theme_bw() +
+  theme(axis.title.y = element_blank()) +
+  scale_x_discrete(breaks = seq(1, 92, by = 5))
+
+patchwork2 <- (p5 + p6) / (p7 + p8) & theme(legend.position = "bottom", 
+                                           #legend.box = "vertical",
+                                           legend.title = element_blank(),
+                                           axis.text.x = element_text(size = 7),
+                                           axis.title = element_text(size = 8),
+                                           title = element_text(size = 8))
+patchwork2 +
+  plot_layout(guides = "collect")
+```
+
+
+## Summary
+
+::: {.callout-note}
+## \color{violet} Summary of Results (work-in-progress):
+
+\begin{itemize}
+    \item \textbf{Block Bootstrap} -- Under-coverage; too narrow
+    \item \textbf{Conformal Prediction} -- Better achieves a target coverage, with acceptable sharpness 
+  \end{itemize}
+:::
+
+::: {.callout-warning}
+## \color{violet} Limitations:
+
+\begin{itemize}
+    \item \small Test set is not long enough for larger forecast horizons
+    \item \small Hyper-parameter choices
+  \end{itemize}
+:::
+
+
+# Future Work
+
+## Future Work
+
+\begin{block}{}
+  \begin{itemize}
+    \item We propose a novel methodology: \alert{Conformal Block Bootstrap (CBB)} \newline
+    \begin{itemize}
+      \item \textbf{\color{blue}A natural integration of BB and SCP} \newline
+      \item \textbf{\color{blue}Exploits the strengths of both the methods} \newline
+    \end{itemize}
+  \end{itemize}
+\end{block}
+
+\only<2->{\begin{textblock}{10}(2.9, 5)
+\fontsize{12}{16}\sf
+\begin{block}{Find me :}
+\faHome \hspace*{0.2cm} \href{https://nuwanipalihawadana.netlify.app/}{nuwanipalihawadana.netlify.app} \newline
+\faLinkedin \hspace*{0.3cm} \href{https://www.linkedin.com/in/nuwani-palihawadana/}{in/nuwani-palihawadana} \newline
+\faGithub \hspace*{0.3cm} \href{https://github.com/nuwani-palihawadana}{@nuwani-palihawadana} \newline
+\faEnvelope \hspace*{0.3cm} \href{mailto:nuwani.kodikarapalihawadana@monash.edu}{nuwani.kodikarapalihawadana@monash.edu}
+\end{block}
+\end{textblock}}
+
+
+## References
+
+\begin{itemize}
+\item Vovk, V., Gammerman, A., and Shafer, G. (2005), \textit{Algorithmic learning in a random world}, New York, NY: Springer.
+\item Tibshirani, R., Barber, R., Candès, E., and Ramdas, A. (2019), “Conformal prediction under covariate shift”, \textit{Advances in neural information processing systems}, 2526--2536.
+\item Barber, R. F., Candès, E. J., Ramdas, A., and Tibshirani, R. J. (2023), “Conformal prediction beyond exchangeability”, \textit{The Annals of Statistics}, 51, 816--845.
+\item Gibbs, I., and Candès, E. (2021), “Adaptive conformal inference under distribution shift”, \textit{Advances in neural information processing systems}, 1660--1672.
+\item Wang, X., and Hyndman, R. J. (2024), “Online conformal inference for multi-step time series forecasting”.
+\end{itemize}
