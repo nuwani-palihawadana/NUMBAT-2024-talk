@@ -3,7 +3,7 @@ title: "Optimal Predictor Selection for High-dimensional Nonparametric Forecasti
 author: Nuwani Palihawadana
 titlegraphic: bg-13.png
 titlecolor: white
-toc: false
+toc: true
 format:
   presentation-beamer:
     pdf-engine: xelatex
@@ -32,7 +32,7 @@ library(feasts)
 ```
 
 
-# Motivation
+# Sparse Multiple Index (SMI) Model
 
 ## Heat Exposure Related Daily Mortality
 ```{r}
@@ -89,7 +89,6 @@ p2 <- dataSummer |>
 plot_grid(p1, p2, nrow=1)
 ```
 
-# Background
 
 ## Background
 
@@ -156,8 +155,6 @@ $$
 \end{textblock}
 :::
 
-
-# Sparse Multiple Index (SMI) Model
 
 ## Sparse Multiple Index (SMI) Model
 
@@ -232,6 +229,7 @@ $$
 \begin{itemize}
   \item $M < \infty$: \small{If $\mathbfit{\alpha^{*}}$ is an optimal solution, then $\max \big ( \{|\alpha_{jm}^{*} |\}_{j\in[p],m\in[q]} \big) \le M$}
 \end{itemize}
+
 
 ## Estimation Algorithm
 
@@ -518,7 +516,7 @@ where
 \end{itemize}
 
 
-## Methodology
+## Background
 
 \begin{block}{Block Bootstrap}
 \begin{itemize}
@@ -536,7 +534,7 @@ where
 \end{block}
 
 
-## Methodology
+## Background
 
 \begin{block}{\color{yellow} Conformal Prediction (CP) -- Vovk et al. (2005)}
 \begin{itemize}
@@ -560,7 +558,7 @@ where
 \end{block}
 
 
-## Methodology
+## Background
 
 \begin{itemize}
   \item \color{violet}CP methods for \textbf{non-exchangeable data}:
@@ -584,7 +582,7 @@ where
 \end{block}
 
 
-## Methodology
+## Background
 
 \begin{itemize}
   \item \color{violet}CP methods for \textbf{non-exchangeable data}:
